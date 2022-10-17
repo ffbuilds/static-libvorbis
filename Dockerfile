@@ -7,11 +7,12 @@ ARG VORBIS_VERSION=1.3.7
 ARG VORBIS_URL="https://downloads.xiph.org/releases/vorbis/libvorbis-$VORBIS_VERSION.tar.gz"
 ARG VORBIS_SHA256=0e982409a9c3fc82ee06e08205b1355e5c6aa4c36bca58146ef399621b0ce5ab
 
-FROM ghcr.io/ffbuilds/static-libogg:main as libogg
+# Must be specified
+ARG ALPINE_VERSION
 
-# bump: alpine /FROM alpine:([\d.]+)/ docker:alpine|^3
-# bump: alpine link "Release notes" https://alpinelinux.org/posts/Alpine-$LATEST-released.html
-FROM alpine:3.16.2 AS base
+FROM ghcr.io/ffbuilds/static-libogg-alpine_${ALPINE_VERSION}:main as libogg
+
+FROM alpine:${ALPINE_VERSION} AS base
 
 FROM base AS download
 ARG VORBIS_URL
@@ -36,9 +37,20 @@ COPY --from=libogg /usr/local/include/ogg/ /usr/local/include/ogg/
 WORKDIR /tmp/vorbis
 RUN \
   apk add --no-cache --virtual build \
-    build-base && \
+    build-base pkgconf && \
   ./configure --disable-shared --enable-static --disable-oggtest && \
   make -j$(nproc) install && \
+  # Sanity tests
+  pkg-config --exists --modversion --path vorbis && \
+  pkg-config --exists --modversion --path vorbisenc && \
+  pkg-config --exists --modversion --path vorbisfile && \
+  ar -t /usr/local/lib/libvorbis.a && \
+  ar -t /usr/local/lib/libvorbisenc.a && \
+  ar -t /usr/local/lib/libvorbisfile.a && \
+  readelf -h /usr/local/lib/libvorbis.a && \
+  readelf -h /usr/local/lib/libvorbisenc.a && \
+  readelf -h /usr/local/lib/libvorbisfile.a && \
+  # Cleanup
   apk del build
 
 FROM scratch
